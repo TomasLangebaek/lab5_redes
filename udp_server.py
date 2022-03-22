@@ -7,7 +7,6 @@ import hashlib
 import os
 import time
 from datetime import datetime
-SIZE = 2048
 FORMAT = "utf-8"
 FILE_END = "FILE_END"
 PORT = 12345
@@ -15,11 +14,11 @@ PORT = 12345
 
 def main():
     # Modificar direccion del servidor
-    host = "192.168.121.1" #"192.168.85.1"  # "192.168.1.2" #Server address #Tomas: 192.168.85.1
+    host = "192.168.85.1" #"192.168.85.1"  # "192.168.1.2" #Server address #Tomas: 192.168.85.1
     port = PORT
 
-    # socket.AF_INET define la familia de protocolos IPv4. Socket.SOCK_STREAM define la conexión TCP.
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # socket.AF_INET define la familia de protocolos IPv4. Socket.SOCK_DGRAM define la conexión UDP.
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # La instrucción s.bindhost, port toma solo un argumento. Vincule el socket al host y al número de puerto.
     # La sentencia s.listen(2) escucha la conexión y espera al cliente.
@@ -40,31 +39,30 @@ def main():
 
     concurrent_clients = int(input("Escriba el número de conexiones concurrentes que desea tener: "))
 
-    s.listen(concurrent_clients)
+    packet_size = int(input("Escriba el de los paquetes a enviar en KB, de 1 a 64: "))
+    packet_size *= 1000
+    # s.listen(concurrent_clients)
 
     print("Server listening on port ", PORT)
 
-    count = 0
+    current_clients = 0
     barrier = threading.Barrier(concurrent_clients)
-    clientesFaltantes = concurrent_clients
-    while clientesFaltantes > 0:
+    while concurrent_clients > current_clients:
 
-        conn, addr = s.accept()
+        message, address = s.recvfrom(4096)
 
-        count += 1
-        print("Accepted {} connections so far".format(count))
+        print("Accepted {} connections so far".format(current_clients))
 
-        thread = ServerThread(count, conn, addr, selected_file, barrier)
-
+        thread = UdpServerThread(current_clients, message, address, selected_file, barrier, packet_size, s)
         thread.start()
-        clientesFaltantes = clientesFaltantes-1
-    
+
+        current_clients += 1
 
 
-def on_new_client(conn, addr, selected_file, barrier):
+def on_new_client(message, address, selected_file, barrier, packet_size, s):
     barrier.wait()
     t1 = time.time()
-    print("Enviando archivo al usuario", addr)
+    print("Enviando archivo al usuario", address)
     if selected_file == 1:
         path = "data/100MB.txt"
     elif selected_file == 2:
@@ -78,38 +76,32 @@ def on_new_client(conn, addr, selected_file, barrier):
     file = open(path, "r")
     data = file.read()
 
-    data_encoded = data.encode(FORMAT)
-    # Se saca la codificacion de hash del archivo
-    data_hash = hashlib.md5(data_encoded).hexdigest()
     file_size = os.path.getsize(path)
     fz = str(file_size)
     # Envio cuatro cosas
     # La función conn.send() envía el mensaje al cliente. 
     # 1. La informacion del tamaño del archivo
-    conn.send(fz.encode(FORMAT))
-    # 2. La informacion del hash
-    conn.send(data_hash.encode(FORMAT))
-    print("Hash:",data_hash)
-    # 3. El archivo dividido en paquetes de de tamaño SIZE
+    s.sendto(fz.encode(FORMAT), address)
+    # El archivo dividido en paquetes de de tamaño packet_size
     send_bytes = 0
     packets = 0
+    print("packet_size {} KB".format(packet_size/1000))
     while True:
         file = open(path, "rb")
-        file_content = file.read(SIZE)
+        file_content = file.read(packet_size)
         while file_content:
-            conn.send(file_content)
+            # 2. El (file_content)
+            s.sendto(file_content, address)
             send_bytes += len(file_content)
-            file_content = file.read(SIZE)
+            file_content = file.read(packet_size)
             packets += 1
         break
-    print("Archivo enviado correctamente")
+    print("Archivo enviado correctamente en {} particiones".format(packets))
     # 4. Un mensaje de confirmación de que termino de enviar correctamente
-    conn.send(b"Termino:200")
+    s.sendto(b"Termino:200", address)
 
     # Recibo un mensaje de confirmacion de que llego el archivo completo y correctamente
-    recibido = conn.recv(SIZE)
-    # Finalmente, conn.close() cierra el socket.
-    conn.close()
+    recibido = s.recv(packet_size)
     t2 = time.time()
 
     date = datetime.now()
@@ -117,24 +109,26 @@ def on_new_client(conn, addr, selected_file, barrier):
     text = "---------------------\n"
     text += "Nombre archivo: " + path + "\n"
     text += "Tamaño del archivo: " + str(file_size) + " Bytes" + "\n"
-    text += "Conectado con el cliente: " + str(addr) + "\n"
+    text += "Conectado con el cliente: " + str(address) + "\n"
     text += "El tiempo de transferencia es: " + str(t2 - t1) + " ms""\n"
     print(text)
     with open('logs_servidor/' + date_time + "-log.txt", 'a') as f:
         f.write(text)
 
 
-class ServerThread(threading.Thread):
-    def __init__(self, thread_id, conn, addr, selected_file, barrier):
+class UdpServerThread(threading.Thread):
+    def __init__(self, thread_id, message, address, selected_file, barrier, packet_size, s):
         threading.Thread.__init__(self)
         self.thread_ID = thread_id
-        self.conn = conn
-        self.addr = addr
+        self.message = message
+        self.address = address
         self.selected_file = selected_file
         self.barrier = barrier
+        self.packet_size = packet_size
+        self.socket = s
 
     def run(self):
-        on_new_client(self.conn, self.addr, self.selected_file, self.barrier)
+        on_new_client(self.message, self.address, self.selected_file, self.barrier, self.packet_size, self.socket)
 
 
 if __name__ == "__main__":
