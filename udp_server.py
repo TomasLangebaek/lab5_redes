@@ -39,7 +39,7 @@ def main():
 
     concurrent_clients = int(input("Escriba el número de conexiones concurrentes que desea tener: "))
 
-    packet_size = int(input("Escriba el de los paquetes a enviar en KB, de 1 a 64: "))
+    packet_size = int(input("Escriba el tamaño de los paquetes a enviar en KB, de 1 a 64: "))
     packet_size *= 1000
     # s.listen(concurrent_clients)
 
