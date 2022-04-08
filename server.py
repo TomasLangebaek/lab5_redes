@@ -11,10 +11,9 @@ FORMAT = "utf-8"
 FILE_END = "FILE_END"
 PORT = 12345
 
-
 def main():
     # Modificar direccion del servidor
-    host = "192.168.85.1" #"192.168.85.1"  # "192.168.1.2" #Server address #Tomas: 192.168.85.1
+    host = "localhost" #"192.168.85.1" #"192.168.85.1"  # "192.168.1.2" #Server address #Tomas: 192.168.85.1
     port = PORT
 
     # socket.AF_INET define la familia de protocolos IPv4. Socket.SOCK_DGRAM define la conexión UDP.
@@ -58,7 +57,6 @@ def main():
 
         current_clients += 1
 
-
 def on_new_client(message, address, selected_file, barrier, packet_size, s):
     barrier.wait()
     t1 = time.time()
@@ -74,7 +72,7 @@ def on_new_client(message, address, selected_file, barrier, packet_size, s):
     # Se lee el archivo
     # breakpoint()
     file = open(path, "r")
-    data = file.read()
+    # data = file.read()
 
     file_size = os.path.getsize(path)
     fz = str(file_size)
@@ -115,7 +113,6 @@ def on_new_client(message, address, selected_file, barrier, packet_size, s):
     with open('logs_servidor/' + date_time + "-log.txt", 'a') as f:
         f.write(text)
 
-
 class UdpServerThread(threading.Thread):
     def __init__(self, thread_id, message, address, selected_file, barrier, packet_size, s):
         threading.Thread.__init__(self)
@@ -130,7 +127,5 @@ class UdpServerThread(threading.Thread):
     def run(self):
         on_new_client(self.message, self.address, self.selected_file, self.barrier, self.packet_size, self.socket)
 
-
-if __name__ == "__main__":
-    
+if __name__ == "__main__":    
     main()
